@@ -1,377 +1,182 @@
-# Progress Tracker — GenPlaylist WP-D Part 4 (Eval Matrix + Verbalization Pipeline)
+##Progress Tracker — GenPlaylist WP-D Part 4 (Eval Matrix + Verbalization Pipeline)
 
 ## Goal
 Build (1) a many-to-many evaluation matrix for generated vs ground-truth playlists
-(CLAP-based OAS via Hungarian matching + FAD + CLAP-Sim), and (2) a verbalization
-pipeline that takes a predicted song embedding + creative cues and produces
-lyrics + music attributes for ACE-Step synthesis.
-
-We are responsible for WP-D Part 4 within the larger GenPlaylist project:
-  - Core preference modeling + diffusion model: mentor-led (we consume its output)
-  - WP-A (input normalization): another student (we consume its output)
-  - WP-B (creative cue mining): another student (we consume its output)
-  - WP-C (demo + user study): another student (our eval feeds into their UI)
-  - WP-D Part 4 (eval matrix + verbalization pipeline): US
+(MERT/CLAP/ImageBind similarity + DDBC-style optimal-matching/OAS), and (2) an adapted
+VibeMus-based prompt/lyric generation pipeline, tested using real playlist audio with
+manually-curated creative cues (standing in for WP-D's core diffusion model output,
+which we assume to predict correctly per project scope).
 
 ## Repo Layout
-- src/                    — our pipeline code
-  - eval_matrix.py        — CLAP OAS + FAD + CLAP-Sim evaluation (COMPLETE)
-  - test_eval_matrix.py   — test script for eval matrix
-  - verbalization.py      — Qwen/DashScope verbalization pipeline (IN PROGRESS)
-  - test_verbalization.py — test script for verbalization
-  - schema.py             — copied from mentor repo (data contracts)
-- data/curated/           — 25 curated input JSON files (5 playlists x 5 variants)
-- data/raw/               — raw audio + metadata (on pod only, gitignored)
-- outputs/                — generated audio, scores (gitignored for large files)
-- reference/GenPlaylist   — mentor repo (read-only)
-- reference/VibeMus       — ACE-Step agent repo (read-only)
-- CLAUDE.md               — Claude Code project instructions
-- PROGRESS.md             — this file
+- reference/GenPlaylist  — paper's reference repo (read-only)
+- reference/VibeMus      — ACE-Step agent repo, adapted into our pipeline (read-only source)
+- src/                   — our adapted pipeline code (single-shot verbalization, eval matrix)
+- data/curated/          — curated dataset: real playlists/audio + manually-picked creative cues
+- outputs/               — generated audio, lyrics, scores
+- notes/                 — meeting notes, design notes
 
-## Mentor Repo Structure (tuteng0915/GenPlaylist)
-Key files we need to integrate with:
-- src/00_data_schema/schema.py         — data contracts (CatalogItem, GeneratedItem,
-                                          SynthesisResult, ContextPrefix) — COPIED to src/
-- src/03_backbone_recommender/         — diffusion model (mentor-led, we consume output)
-- src/04_synthesis/verbalization.py    — our verbalization skeleton (COPIED + adapted)
-- src/04_synthesis/synthesis.py        — ACE-Step synthesis (TODO)
-- src/04_synthesis/app.py              — WP-C Gradio demo (another student)
+## Status: Step 0 — Environment Setup — COMPLETE
 
----
+- [x] Set up project repo (genplaylist-wp4-eval), .gitignore, CLAUDE.md, PROGRESS.md
+- [x] Clone GenPlaylist + VibeMus as reference
+- [x] Get RunPod GPU pod access (shared pod; added own SSH key to authorized_keys
+      via web terminal rather than overwriting existing account-level keys)
+- [x] Install Miniconda on pod (note: correct URL is repo.anaconda.com/miniconda/...,
+      not /miniconda3/...)
+- [x] Accept conda Terms of Service for default channels (now required by newer conda
+      before `conda create` will work)
+- [x] Create `vibemus` conda env (python 3.10)
+- [x] Install VibeMus dependencies: torch/torchvision/torchaudio (cu118), requirements.txt,
+      transformers==4.51.0 (pinned last per README; conflicts with ace-step's stated
+      4.50.0 requirement but works in practice)
+- [x] Install ffmpeg
+- [x] Install hf_transfer (undocumented missing dependency — needed because
+      HF_HUB_ENABLE_HF_TRANSFER=1 is set for fast checkpoint downloads)
+- [x] Run VibeMus (`python main.py`), expose Gradio UI via `share=True` (no direct
+      SSH port forwarding set up; public gradio.live link used instead)
+- [x] ACE-Step-v1-3.5B checkpoint downloaded successfully on first run
+- [x] Smoke test passed: manually entered tags + lyrics in Gradio UI (no DASHSCOPE
+      API key set), clicked Generate, produced a playable .wav with no CUDA/ffmpeg
+      errors. Output saved to outputs/smoke_test/.
 
-## STEP 0 — Environment Setup — COMPLETE
+## Known deviations from VibeMus README (for reporting)
+- Miniconda install URL in common instructions is outdated/wrong path.
+- conda ToS acceptance step not mentioned anywhere, now mandatory.
+- hf_transfer not listed in requirements.txt but required at runtime.
+- No port-forwarding configured on RunPod; used Gradio share=True tunnel instead.
+- Tested without DASHSCOPE_API_KEY (manual tag/lyric entry) since LLM backend
+  swap to Claude API is the next step, not yet done.
 
-### What was done
-- Created GitHub repo (genplaylist-wp4-eval) with structure:
-  src/, data/curated/, data/raw/, outputs/, reference/, notes/
-- Added CLAUDE.md (Claude Code project instructions), .gitignore, PROGRESS.md
-- Resolved RunPod SSH access on shared pod: couldn't overwrite existing SSH keys
-  on shared account — used web terminal to APPEND own key to pod's
-  ~/.ssh/authorized_keys instead (additive, non-destructive)
-- Installed Miniconda on pod
-- Created vibemus conda env (Python 3.10)
-- Installed VibeMus dependencies: torch/torchvision/torchaudio (cu118),
-  requirements.txt, transformers==4.51.0
-- Installed ffmpeg, hf_transfer
-- Ran VibeMus end-to-end via Gradio (share=True), downloaded ACE-Step-v1-3.5B
-  checkpoint, generated first test audio with no errors
-- Installed Claude Code on pod via npm (Node.js 20)
-- Configured rclone for Google Drive (headless OAuth flow on pod)
-- Configured DashScope API key in .env for VibeMus chat flow
-- Installed Claude Code, set ANTHROPIC_API_KEY for Claude Code agent use
+## Status: Step 1 — Curated Dataset — COMPLETE (placeholder cues)
+- [x] Locate/extract real audio + metadata files (audio_part_aa..ak, genplaylist_data_meta)
+- [x] Inspect metadata schema (playlist IDs, song IDs, audio file mapping)
+- [x] Pick 5 real playlists (6334, 3657, 8280, 3122, 13867)
+- [x] Split each into seed set (first 5 audio-available songs) / ground truth (next 5 audio-available)
+- [x] Curate creative cues per playlist, with weighted variants (5 per playlist)
+      — NOTE: currently GENERIC PLACEHOLDER cues (energetic/melancholic/upbeat/dreamy/intense),
+      not hand-curated per-playlist cues. Revisit once lyric matching is resolved.
+- [x] Assemble 25 curated input JSON files in data/curated/
 
-### Mistakes / fixes
-- Miniconda URL was wrong in common instructions: must use
-  repo.anaconda.com/miniconda/ NOT /miniconda3/ (404 error otherwise)
-- conda ToS acceptance now required before conda create will work:
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-- hf_transfer not in VibeMus requirements.txt but required at runtime for
-  ACE-Step checkpoint download (HF_HUB_ENABLE_HF_TRANSFER=1 is set by ace-step)
-- SSH sessions time out when laptop sleeps — must re-run conda activate vibemus
-  and cd to project root on every reconnect
-- Pod was TERMINATED (not just stopped) at some point — container ID changed
-  from 9aff7bae037b to f3cab1d89a02, all files at / were wiped. Recovered by
-  re-cloning repo. Going forward: all work in /workspace (persistent volume),
-  always push code to GitHub before stopping pod
+## Status: Step 3 — Pipeline Simplification (single-shot verbalization) — NOT STARTED
+- [ ] Strip VibeMus's multi-turn chat loop into a single function:
+      (seed_songs_metadata, weighted_creative_cues) -> (tags/attributes, lyrics)
+- [ ] Wire ACE-Step synthesis to this single-shot function
+- [ ] Run all 25 curated inputs through pipeline -> generated audio + lyrics + tags
 
----
+## Status: Step 4 — Evaluation Matrix — CODE COMPLETE (full-data test blocked)
+- [x] Set up CLAP encoder on pod (laion_clap, enable_fusion=False, default 630k-audioset ckpt).
+      MERT + ImageBind intentionally DROPPED for this iteration — metric set narrowed to
+      CLAP + FAD only per current scope.
+- [x] Implement FAD (Frechet Audio Distance) — frechet_audio_distance, VGGish backbone,
+      16 kHz. NOTE: .score() takes two DIRECTORIES, so evaluate() symlinks each file set
+      into a temp dir (unique index-prefixed names) and cleans them up after.
+- [x] Implement pairwise similarity matrix (generated set x ground-truth set) — L2-normalized
+      CLAP audio embeddings, cosine similarity.
+- [x] Implement Hungarian-algorithm optimal matching / OAS score (per DDBC Algorithm 3) —
+      scipy.optimize.linear_sum_assignment on cost = 1 - similarity, average matched sims -> CLAP_OAS.
+- [x] Implement CLAP-Sim condition adherence check — mean cosine sim between each generated
+      song's CLAP audio embedding and the CLAP text embedding of prompt_text.
+- [x] Wrap as reusable src/eval_matrix.py module: evaluate(generated_audio_paths,
+      ground_truth_audio_paths, prompt_text=None) -> {CLAP_OAS, FAD, CLAP_Sim}.
+- [x] src/test_eval_matrix.py loads data/curated/p6334_v1.json, uses seed_songs as generated
+      and ground_truth_songs as reference, prompt_text='energetic upbeat pop', prints scores.
+- [ ] Run test_eval_matrix.py on the full p6334_v1 set — BLOCKED: audio not materialized
+      (see log). Validated the module end-to-end on the 2 recoverable real files instead.
 
-## STEP 1 — Data Setup — PARTIALLY COMPLETE (blocked on disk space)
+## Status: Step 5 — Run Full Mock Pipeline + Sanity Check — NOT STARTED
+- [ ] Run 25 curated inputs through pipeline + eval matrix
+- [ ] Produce results table, spot-check outputs by ear
 
-### What was done
-- Transferred MPD-subset from shared Google Drive to pod via rclone
-  (used --drive-shared-with-me flag since folder is shared TO us, not owned by us)
-- Dataset: 6,585 playlists, 5,119 unique songs, avg playlist length 28.5
-- Extracted genplaylist_data_meta.tar.gz: got lyrics/, playlists/ directories
-- Extracted 1,147 mp3 files before hitting disk quota
-- Deleted raw split parts to free space after partial extraction
+## Status: Step 6 — Gradio Demo Frontend — NOT STARTED (low priority)
 
-### Mistakes / blocks
-- DISK QUOTA: /workspace volume hit allocation limit during archive extraction.
-  Mp3s extracted as 0-byte placeholder files (not real audio).
-  Need mentor to increase /workspace volume size on RunPod.
-  Current state: 1,147 mp3 file entries exist but are all 0 bytes.
-- Missing archive parts: audio_part_af through audio_part_aj never fully
-  downloaded (failed in original rclone transfer). These parts contain
-  data/dataset/catalog_metadata.json and splits/ files needed for proper
-  playlist/song metadata.
-- Audio/lyrics ID mismatch: the 1,147 extracted mp3 IDs don't match the
-  1,690 extracted lyrics file IDs — zero overlap. This is because we only
-  got a partial archive. Full archive has matched IDs per the README.
-- rclone initially configured wrong (used browser auth flow on headless pod
-  which fails). Fix: must select N when asked "Use web browser to authenticate"
-  then run rclone authorize "drive" "..." on local Mac to get token.
-
-### What we have
-- data/raw/data/lyrics/spotify/{id}.txt — 1,690 lyrics files
-- data/raw/data/playlists/mpd_subset/playlists.txt — full playlist structure
-  (format: playlist_id, song_id_1, song_id_2, ... comma separated)
-- data/raw/data/playlists/mpd_subset/item_ids.txt — all song IDs
-- data/raw/data/playlists/mpd_subset/item_freq.json — song frequency counts
-- 1,147 mp3 files at data/raw/data/audio/spotify/{id}.mp3 (all 0 bytes)
-
-### What still needs to happen
-- Mentor to increase /workspace volume size
-- Re-extract audio properly once disk space is available
-- Download missing parts (audio_part_af through audio_part_aj) for catalog metadata
-
----
-
-## STEP 2 — Curated Dataset (25 Input Files) — COMPLETE
-
-### What was done
-- Used Claude Code to parse playlists.txt and find playlists with audio coverage
-- 388 of 6,585 playlists have at least 10 audio-available songs
-- Selected 5 playlists (by audio count):
-
-| Playlist ID | Total Songs | Audio Available |
-|-------------|-------------|-----------------|
-| 6334        | 54          | 18              |
-| 3657        | 56          | 18              |
-| 8280        | 56          | 16              |
-| 3122        | 51          | 15              |
-| 13867       | 55          | 15              |
-
-- For each playlist: first 5 audio-available songs = seed, next 5 = ground truth
-- 5 variants per playlist by varying creative cue weights
-- 25 JSON files written to data/curated/ (all 250 referenced mp3 paths confirmed
-  to exist on disk at time of creation — note: files are 0-byte due to disk issue)
-- Schema: {playlist_id, variant_id, seed_songs:[{id, audio_path}],
-           ground_truth_songs:[{id, audio_path}], creative_cues:[{cue, weight}]}
-
-### Known limitations / caveats
-- Creative cues are PLACEHOLDER (energetic, melancholic, upbeat, dreamy, intense)
-  across all playlists — real per-playlist cues should come from WP-B output.
-  Will be updated once WP-B delivers item2cues.json.
-- A few song IDs appear in multiple playlists (e.g. 11195 seeds both 6334 and
-  8280) — inherent to source data, not an error.
-- Audio files are 0-byte until disk space is fixed.
-
----
-
-## STEP 3 — Evaluation Matrix — CODE COMPLETE, BLOCKED ON AUDIO
-
-### What was built (src/eval_matrix.py)
-
-Main function: evaluate(generated_audio_paths, ground_truth_audio_paths,
-                        prompt_text=None) -> {CLAP_OAS, FAD, CLAP_Sim}
-
-Three metrics:
-
-1. CLAP_OAS (Optimal Alignment Score)
-   - Load CLAP (laion_clap.CLAP_Module, enable_fusion=False)
-   - Extract audio embeddings for all generated + ground truth songs
-   - Build cosine similarity matrix (generated x ground_truth)
-   - Run Hungarian algorithm (scipy.optimize.linear_sum_assignment,
-     cost = 1 - similarity) for optimal many-to-many matching
-   - Average matched similarities = CLAP_OAS score
-   - Higher = generated songs semantically closer to what users chose
-   - Directly implements DDBC Algorithm 3 (Appendix B of paper)
-
-2. FAD (Frechet Audio Distance)
-   - Uses frechet_audio_distance library (VGGish model)
-   - Measures audio quality: compares embedding distributions of
-     generated vs real music sets
-   - Lower FAD = better audio quality
-   - Note: FAD.score() takes directories, not file lists — implementation
-     symlinks each set into temp dirs, scores, then cleans up
-
-3. CLAP_Sim (Condition Adherence)
-   - Only computed when prompt_text is provided
-   - Cosine similarity between CLAP audio embedding of each generated song
-     and CLAP text embedding of the prompt used to generate it
-   - Measures whether ACE-Step actually followed the text prompt
-   - Higher = better prompt adherence
-
-Also includes optional model-reuse path (pass preloaded models as args)
-to avoid reloading CLAP + VGGish on every call during batch runs.
-
-### Verification results (on 2 valid non-zero mp3 files)
-CLAP_OAS: 0.404, FAD: ~5e-12, CLAP_Sim: 0.091
-- FAD near 0 expected when comparing songs to themselves (sanity check passed)
-- CLAP_OAS 0.404 reasonable for non-identical songs
-- CLAP_Sim 0.091 reasonable for generic prompt on unrelated audio
-
-### Why NOT ImageBind
-ImageBind was originally planned as a third encoder (paper uses MERT + CLAP
-+ ImageBind as three converging similarity signals). Dropped because:
-- imagebind package has pkg_resources dependency that breaks with newer
-  setuptools (setuptools 82+ removed pkg_resources from default install)
-- Patching data.py fixed the import but revealed further dependency chain issues
-- Time cost of debugging outweighed benefit for this stage
-- CLAP + FAD gives a solid, defensible eval matrix for the deliverable
-TODO: revisit ImageBind once disk issue is fixed and real audio is available.
-Adding it would strengthen the eval matrix and match the paper more closely.
-
-### Why NOT MERT
-MERT (m-a-p/MERT-v1-95M) was dropped early — decision made to keep eval
-matrix lean (CLAP already covers audio-semantic similarity well, MERT would
-be redundant for our scale). Could be added later if needed.
-
-### Current blocker
-All 1,147 mp3s are 0-byte placeholder files due to disk quota issue.
-Full batch run (all 25 curated inputs) blocked until real audio is available.
-test_eval_matrix.py works correctly on the 2 files that had real content
-before quota was hit.
-
----
-
-## STEP 4 — Verbalization Pipeline — IN PROGRESS
-
-### What was done
-- Read mentor's verbalization.py skeleton
-  (reference/GenPlaylist/src/04_synthesis/verbalization.py)
-- Read schema.py (src/00_data_schema/schema.py) — defines:
-    CatalogItem: metadata for one catalog song (title, artist, genre, mood,
-                 tempo, key, language, lyric_excerpt, audio_path, tags)
-    GeneratedItem: output of diffusion model (rvq_codes, z_hat_emb, mu_c_emb,
-                   sigma_c2, cue_ids, context_prefix)
-    SynthesisResult: output of synthesis step (audio_path, music_attributes,
-                     lyric_draft, neighbors, style_summary)
-    ContextPrefix: standardized playlist prefix (item_ids, source, raw_input)
-- Copied both files into src/
-- Replaced _call_qwen3() stub with real DashScope/Qwen API call
-
-### What the verbalization pipeline does (step by step)
-Given a GeneratedItem from the diffusion model:
-1. knn_verbalize(z_hat_emb): find 5 nearest catalog songs to predicted embedding
-   (these describe WHERE in music space the new song should land)
-2. knn_verbalize(mu_c_emb): find 5 nearest catalog songs to playlist centroid
-   (these describe the GLOBAL STYLE of the playlist)
-3. generate_music_attributes(): call Qwen with neighbors + style_summary +
-   sigma_c2 → comma-separated ACE-Step style tags
-   (e.g. "indie pop, melancholic, 95 BPM, guitar, E minor, English")
-4. generate_lyrics(): call Qwen with same context + attributes →
-   ACE-Step markup lyrics ([verse]/[chorus]/[bridge] format)
-5. Return: {neighbors, style_summary, music_attributes, lyric_draft}
-
-### Current status
-- src/verbalization.py: copied + _call_qwen3 stub replaced with real Qwen call
-- src/test_verbalization.py: written with mock GeneratedItem + 5 mock CatalogItems
-- BLOCKED: IndentationError in verbalization.py (indentation from mentor's
-  commented-out code block carried over incorrectly — being fixed)
-
-### TODO after fixing IndentationError
-- Run test_verbalization.py end to end
-- Verify Qwen produces valid music_attributes (comma-separated tags) and
-  lyric_draft (proper ACE-Step markup with section markers)
-- Connect to real catalog: load catalog_metadata.json + clhe_weight.npy
-  (need missing archive parts for catalog_metadata.json)
-
----
-
-## STEP 5 — Synthesis Pipeline — NOT STARTED
-
-Connect verbalization output to ACE-Step to generate real audio.
-Will adapt reference/VibeMus/pipeline.py into src/synthesis.py.
-Needs GPU + working audio files.
-
-Function signature (per mentor schema):
-synthesize(music_attributes, lyric_draft, output_path) -> SynthesisResult
-
----
-
-## STEP 6 — Full Pipeline End-to-End Run — NOT STARTED
-
-For each of 25 curated inputs:
-1. verbalize() → music_attributes + lyric_draft
-2. synthesize() → generated .wav file
-3. evaluate() → {CLAP_OAS, FAD, CLAP_Sim} scores
-Produce results table. Sanity check: self-similarity test.
-Blocked on: disk space fix + real audio + synthesis implementation.
-
----
-
-## STEP 7 — Human User Study — BLOCKED
-
-Waiting on WP-C demo system (another student).
-Design: pairwise comparison (our generated vs retrieval baseline),
-        rating forms (coherence, quality, overall satisfaction),
-        evaluator demographics (listening habits, musical background).
-Will implement evaluation forms inside WP-C's Gradio app.
-
----
-
-## Known Issues / Blockers (priority order)
-
-1. CRITICAL: /workspace disk quota exceeded — mp3s are 0-byte.
-   Fix: ask mentor to increase RunPod /workspace volume size.
-   Impact: blocks eval matrix batch run, synthesis, full pipeline.
-
-2. HIGH: Missing archive parts (audio_part_af through audio_part_aj).
-   Contains catalog_metadata.json needed for real verbalization.
-   Fix: re-download from Drive once disk space is available.
-
-3. MEDIUM: IndentationError in src/verbalization.py line 54.
-   Fix: in progress (correct indentation of _call_qwen3 function body).
-
-4. MEDIUM: Creative cues are placeholder.
-   Fix: replace with WP-B output (item2cues.json) when available.
-   Contact: Jiatong (WP-B owner) to check if cue mining is done.
-
-5. LOW: ImageBind not implemented.
-   Fix: retry pkg_resources patch once other blockers resolved.
-   Impact: weakens eval matrix slightly (paper uses 3 encoders, we use 1+FAD).
-
-6. LOW: faiss not implemented for kNN (using numpy cosine instead).
-   Fine for 5,119 songs. Only needed if scaling to full 254k catalog.
-
----
-
-## What Can Be Reported Right Now
-
-- Environment fully set up on RunPod GPU pod (VibeMus + ACE-Step verified
-  working end-to-end, generated real audio in smoke test)
-- 25 curated test inputs built from real Spotify MPD playlist data
-  (5 playlists x 5 creative cue weight variants, proper seed/GT split)
-- Evaluation matrix implemented (src/eval_matrix.py):
-    CLAP-based OAS with Hungarian optimal matching (per DDBC Algorithm 3)
-    FAD (Frechet Audio Distance) for audio quality
-    CLAP-Sim for condition adherence
-    Verified working on valid audio (CLAP_OAS=0.404, FAD≈5e-12, CLAP_Sim=0.091)
-- Verbalization pipeline adapted from mentor skeleton (src/verbalization.py):
-    kNN catalog lookup (numpy cosine, k=5)
-    Qwen/DashScope LLM calls for music attributes + ACE-Step lyrics
-    Full integration with mentor's schema.py data contracts
-- Schema.py integrated (CatalogItem, GeneratedItem, SynthesisResult,
-  ContextPrefix understood and in use)
-- Repo: github.com/aanya007/genplaylist-wp4-eval
+## Status: Step 7 — Human User Study — BLOCKED (waiting on WP-C demo system)
 
 ## Log
 
-### 2026-06-27
-- Set up repo, CLAUDE.md, .gitignore, PROGRESS.md
+### 2026-07-03 — Implemented eval matrix (Step 4: CLAP + FAD only)
+- Wrote src/eval_matrix.py with evaluate(generated_audio_paths, ground_truth_audio_paths,
+  prompt_text=None) -> {CLAP_OAS, FAD, CLAP_Sim}. Uses only laion_clap + frechet_audio_distance
+  (no MERT/ImageBind, per current scope).
+  - CLAP_OAS: L2-normalized CLAP audio embeddings for both sets -> cosine sim matrix ->
+    scipy linear_sum_assignment on (1 - sim) -> mean of matched similarities.
+  - FAD: FrechetAudioDistance(model_name='vggish', sr=16000). API quirk: .score() takes
+    two DIRECTORIES not file lists, so we symlink each set into a temp dir (index-prefixed
+    names to avoid cross-playlist collisions) and rmtree after.
+  - CLAP_Sim: mean cosine sim of each generated audio embedding vs the CLAP text embedding
+    of prompt_text (text passed as a 2-item list, keep row 0 — single-item list trips batchnorm).
+- Wrote src/test_eval_matrix.py: loads data/curated/p6334_v1.json, seed_songs -> generated,
+  ground_truth_songs -> reference, prompt_text='energetic upbeat pop', prints scores dict.
+- DATA BLOCKER found while testing: all 1,147 mp3s under data/raw/data/audio/spotify/ are
+  0-byte PLACEHOLDERS. Real audio lives in data/raw/audio_combined.tar.gz (2.4 GB), but that
+  archive is a TRUNCATED download ("gzip: unexpected end of file" / "tar: Unexpected EOF").
+  Only files before the truncation point are recoverable; of the 10 IDs p6334_v1 needs, only
+  8751 (seed) and 79149 (gt) are present in the tar. So test_eval_matrix.py can't run on the
+  full set until the audio is re-downloaded/extracted.
+- Extracted the 2 recoverable real files and validated evaluate() END-TO-END on them
+  (generated=[8751,79149], gt=[79149,8751], prompt='energetic upbeat pop'):
+  CLAP_OAS=0.404, FAD~5e-12 (~0, expected since the two sets are identical-but-permuted —
+  good correctness signal), CLAP_Sim=0.091. CLAP ckpt + VGGish weights auto-downloaded fine.
+- NEXT: re-download/extract audio_combined.tar.gz fully (verify integrity), then run
+  test_eval_matrix.py on the real p6334_v1 seed/gt sets and across all 25 curated inputs (Step 5).
 
 ### 2026-06-29
-- Resolved RunPod SSH (appended key to authorized_keys via web terminal)
-- Installed Miniconda (fixed URL), conda ToS, vibemus env, all VibeMus deps
-- Fixed hf_transfer missing dep, downloaded ACE-Step checkpoint
-- Smoke test passed: generated audio via Gradio UI
-- Installed Claude Code via npm, configured ANTHROPIC_API_KEY
-- Configured rclone for Google Drive (headless OAuth)
-- Configured DASHSCOPE_API_KEY for VibeMus chat
+- Set up project repo structure, .gitignore, CLAUDE.md.
+- Resolved RunPod SSH access on shared pod.
+- Completed full VibeMus environment setup on RunPod (see Step 0 above for details).
+- Successfully generated first test audio via Gradio UI, no errors.
+- Step 0 fully complete. Next: build curated dataset (Step 1), then swap LLM
+  backend to Claude API (Step 2).
+
 
 ### 2026-07-03
-- Pod wiped (container terminated, not just stopped)
-- Recovered: re-cloned into /workspace (persistent volume going forward)
-- Reinstalled Miniconda, conda env, all deps
-- Transferred MPD-subset via rclone --drive-shared-with-me
-- Hit disk quota: mp3s extracted as 0-byte files
-- Deleted raw archive parts to free space
-- Installed CLAP (laion-clap confirmed loading)
-- Attempted ImageBind: dropped due to pkg_resources issue
-- Built curated dataset: 25 JSON files via Claude Code
-- Implemented eval_matrix.py: CLAP OAS + FAD + CLAP_Sim
-- Verified eval matrix on 2 valid mp3s (CLAP_OAS=0.404, FAD≈5e-12)
-- Read mentor schema.py + verbalization.py skeleton
-- Copied + adapted verbalization.py (replaced _call_qwen3 stub with Qwen call)
-- Written test_verbalization.py with mock data
-- Hit IndentationError in verbalization.py — fixing
+- Pod was terminated/replaced (container ID changed from 9aff7bae037b to f3cab1d89a02).
+- All files at / were wiped. GitHub only had scaffold files (.gitignore, CLAUDE.md, PROGRESS.md).
+- Recovered by re-cloning repo into /workspace (persistent volume) and redoing environment setup.
+- Going forward: all work in /workspace/genplaylist-wp4-eval to ensure persistence.
 
-### Next session
-- Fix IndentationError in verbalization.py
-- Run test_verbalization.py end to end (verify Qwen produces valid output)
-- Talk to mentor about disk space increase
-- Talk to Jiatong (WP-B) about cue mining status
-- Once disk fixed: re-extract audio, run eval matrix batch, start synthesis
+### 2026-07-03
+- Pod was terminated/replaced (container ID changed from 9aff7bae037b to f3cab1d89a02).
+- All files at / were wiped. GitHub only had scaffold files (.gitignore, CLAUDE.md, PROGRESS.md).
+- Recovered by re-cloning repo into /workspace (persistent volume) and redoing environment setup.
+- Going forward: all work in /workspace/genplaylist-wp4-eval to ensure persistence.
+
+### 2026-07-03 — Playlist candidate scan (Step 1, read-only report)
+- Parsed data/raw/data/playlists/mpd_subset/playlists.txt (6,585 playlists;
+  format = `playlist_id, song_id, song_id, ...`).
+- Cross-referenced against 1,147 mp3 files in data/raw/data/audio/spotify/.
+- Found 388 playlists with >=10 audio-available songs; reported top 10 by audio count
+  (best candidates: 6334/6388/3657 with 18 audio songs each).
+- GOTCHA: both audio/ and lyrics/ dirs contain macOS AppleDouble sidecar files
+  (`._<id>.mp3` / `._<id>.txt`) — inflates naive `ls` counts and must be filtered
+  (skip names starting with `._`). Real counts: 1,147 audio, 1,690 lyrics.
+- BLOCKER for lyric verbalization: audio song-IDs and lyric song-IDs are DISJOINT.
+  Overlap = 0 across all 1,147 audio IDs (ranges overlap: audio 1-254002,
+  lyrics 15-254042, but no common ID). => none of the audio-available playlist
+  songs have matching lyrics. Lyric-based pipeline path can't use these audio songs
+  as-is; need to source lyrics for the audio IDs (or audio for the lyric IDs), or
+  confirm this is expected. Raised for decision before picking the final 5 playlists.
+- No files modified (data untouched); report only.
+
+### 2026-07-03 — Built 25 curated input JSONs (Step 1 complete)
+- Selected 5 playlists: 6334, 3657, 8280, 3122, 13867.
+- Per playlist: seed_songs = first 5 audio-available songs, ground_truth_songs = next 5
+  audio-available songs (skipping playlist songs with no mp3). All 5 had >=10 audio songs.
+- Wrote 25 files data/curated/p{playlist_id}_v{1-5}.json following schema
+  {playlist_id, variant_id, seed_songs:[{id,audio_path}], ground_truth_songs:[{id,audio_path}],
+  creative_cues:[{cue,weight}]}. audio_path = data/raw/data/audio/spotify/{id}.mp3.
+- Validated: 25/25 JSON parse OK, all 250 referenced mp3 paths exist on disk.
+- Creative cues are PLACEHOLDERS: 5 generic cues (energetic/melancholic/upbeat/dreamy/intense),
+  same set in every file, with a different weight profile per variant (each variant emphasizes
+  one cue at weight 1.0). To be replaced with real per-playlist creative cues later; lyrics
+  still unmatched (see disjoint audio/lyric ID blocker above).
+
+### 2026-07-03 (continued)
+- Fixed IndentationError in verbalization.py (_call_qwen3 body had extra
+  indentation carried over from mentor's commented-out code block)
+- Ran test_verbalization.py successfully end to end — Step 4 COMPLETE
+- GeneratedItem validation passed
+- Qwen API produced valid music_attributes:
+  "synth-pop, nostalgic, 98 BPM, retro synths and bassline, F minor, English"
+- Qwen API produced valid ACE-Step markup lyrics (verse/chorus/bridge structure)
+- Verbalization pipeline verified working on mock data with real Qwen API calls
+- Next: connect to real catalog embeddings, run synthesis, fix disk space
