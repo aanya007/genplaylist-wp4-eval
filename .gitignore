@@ -1,1 +1,4 @@
 reference/
+
+# Raw source dataset (large binary audio/lyrics; kept on persistent volume, not in git)
+data/raw/

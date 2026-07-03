@@ -63,13 +63,25 @@ which we assume to predict correctly per project scope).
 - [ ] Wire ACE-Step synthesis to this single-shot function
 - [ ] Run all 25 curated inputs through pipeline -> generated audio + lyrics + tags
 
-## Status: Step 4 — Evaluation Matrix — NOT STARTED
-- [ ] Set up MERT, CLAP, ImageBind encoders on pod
-- [ ] Implement FAD (Frechet Audio Distance)
-- [ ] Implement pairwise similarity matrix (generated set x ground-truth set)
-- [ ] Implement Hungarian-algorithm optimal matching / OAS score (per DDBC Algorithm 3)
-- [ ] Implement CLAP-Sim condition adherence check
-- [ ] Wrap as reusable src/eval_matrix.py module
+## Status: Step 4 — Evaluation Matrix — CODE COMPLETE (full-data test blocked)
+- [x] Set up CLAP encoder on pod (laion_clap, enable_fusion=False, default 630k-audioset ckpt).
+      MERT + ImageBind intentionally DROPPED for this iteration — metric set narrowed to
+      CLAP + FAD only per current scope.
+- [x] Implement FAD (Frechet Audio Distance) — frechet_audio_distance, VGGish backbone,
+      16 kHz. NOTE: .score() takes two DIRECTORIES, so evaluate() symlinks each file set
+      into a temp dir (unique index-prefixed names) and cleans them up after.
+- [x] Implement pairwise similarity matrix (generated set x ground-truth set) — L2-normalized
+      CLAP audio embeddings, cosine similarity.
+- [x] Implement Hungarian-algorithm optimal matching / OAS score (per DDBC Algorithm 3) —
+      scipy.optimize.linear_sum_assignment on cost = 1 - similarity, average matched sims -> CLAP_OAS.
+- [x] Implement CLAP-Sim condition adherence check — mean cosine sim between each generated
+      song's CLAP audio embedding and the CLAP text embedding of prompt_text.
+- [x] Wrap as reusable src/eval_matrix.py module: evaluate(generated_audio_paths,
+      ground_truth_audio_paths, prompt_text=None) -> {CLAP_OAS, FAD, CLAP_Sim}.
+- [x] src/test_eval_matrix.py loads data/curated/p6334_v1.json, uses seed_songs as generated
+      and ground_truth_songs as reference, prompt_text='energetic upbeat pop', prints scores.
+- [ ] Run test_eval_matrix.py on the full p6334_v1 set — BLOCKED: audio not materialized
+      (see log). Validated the module end-to-end on the 2 recoverable real files instead.
 
 ## Status: Step 5 — Run Full Mock Pipeline + Sanity Check — NOT STARTED
 - [ ] Run 25 curated inputs through pipeline + eval matrix
@@ -80,6 +92,32 @@ which we assume to predict correctly per project scope).
 ## Status: Step 7 — Human User Study — BLOCKED (waiting on WP-C demo system)
 
 ## Log
+
+### 2026-07-03 — Implemented eval matrix (Step 4: CLAP + FAD only)
+- Wrote src/eval_matrix.py with evaluate(generated_audio_paths, ground_truth_audio_paths,
+  prompt_text=None) -> {CLAP_OAS, FAD, CLAP_Sim}. Uses only laion_clap + frechet_audio_distance
+  (no MERT/ImageBind, per current scope).
+  - CLAP_OAS: L2-normalized CLAP audio embeddings for both sets -> cosine sim matrix ->
+    scipy linear_sum_assignment on (1 - sim) -> mean of matched similarities.
+  - FAD: FrechetAudioDistance(model_name='vggish', sr=16000). API quirk: .score() takes
+    two DIRECTORIES not file lists, so we symlink each set into a temp dir (index-prefixed
+    names to avoid cross-playlist collisions) and rmtree after.
+  - CLAP_Sim: mean cosine sim of each generated audio embedding vs the CLAP text embedding
+    of prompt_text (text passed as a 2-item list, keep row 0 — single-item list trips batchnorm).
+- Wrote src/test_eval_matrix.py: loads data/curated/p6334_v1.json, seed_songs -> generated,
+  ground_truth_songs -> reference, prompt_text='energetic upbeat pop', prints scores dict.
+- DATA BLOCKER found while testing: all 1,147 mp3s under data/raw/data/audio/spotify/ are
+  0-byte PLACEHOLDERS. Real audio lives in data/raw/audio_combined.tar.gz (2.4 GB), but that
+  archive is a TRUNCATED download ("gzip: unexpected end of file" / "tar: Unexpected EOF").
+  Only files before the truncation point are recoverable; of the 10 IDs p6334_v1 needs, only
+  8751 (seed) and 79149 (gt) are present in the tar. So test_eval_matrix.py can't run on the
+  full set until the audio is re-downloaded/extracted.
+- Extracted the 2 recoverable real files and validated evaluate() END-TO-END on them
+  (generated=[8751,79149], gt=[79149,8751], prompt='energetic upbeat pop'):
+  CLAP_OAS=0.404, FAD~5e-12 (~0, expected since the two sets are identical-but-permuted —
+  good correctness signal), CLAP_Sim=0.091. CLAP ckpt + VGGish weights auto-downloaded fine.
+- NEXT: re-download/extract audio_combined.tar.gz fully (verify integrity), then run
+  test_eval_matrix.py on the real p6334_v1 seed/gt sets and across all 25 curated inputs (Step 5).
 
 ### 2026-06-29
 - Set up project repo structure, .gitignore, CLAUDE.md.
