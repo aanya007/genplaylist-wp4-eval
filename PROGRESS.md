@@ -47,19 +47,13 @@ which we assume to predict correctly per project scope).
 - Tested without DASHSCOPE_API_KEY (manual tag/lyric entry) since LLM backend
   swap to Claude API is the next step, not yet done.
 
-## Status: Step 1 — Curated Dataset — NOT STARTED
-- [ ] Locate/extract real audio + metadata files (audio_part_aa..ak, genplaylist_data_meta)
-- [ ] Inspect metadata schema (playlist IDs, song IDs, audio file mapping)
-- [ ] Pick 5 real playlists
-- [ ] Split each into seed set (first 5 songs) / ground truth (next 5 songs)
-- [ ] Manually curate 6-10 creative cues per playlist, with weighted variants (5 per playlist)
-- [ ] Assemble 25 curated input JSON files in data/curated/
-
-## Status: Step 2 — LLM Backend Swap (DashScope -> Claude API) — NOT STARTED
-- [ ] Identify all DashScope/Qwen call sites in VibeMus (assistant.py, configs)
-- [ ] Copy relevant files into src/, replace LLM calls with Anthropic API
-- [ ] Set ANTHROPIC_API_KEY on pod
-- [ ] Re-test chat flow end-to-end with Claude as backend
+## Status: Step 1 — Curated Dataset —
+- [x ] Locate/extract real audio + metadata files (audio_part_aa..ak, genplaylist_data_meta)
+- [x ] Inspect metadata schema (playlist IDs, song IDs, audio file mapping)
+- [x ] Pick 5 real playlists
+- [x ] Split each into seed set (first 5 songs) / ground truth (next 5 songs)
+- [x ] Manually curate 6-10 creative cues per playlist, with weighted variants (5 per playlist)
+- [x ] Assemble 25 curated input JSON files in data/curated/
 
 ## Status: Step 3 — Pipeline Simplification (single-shot verbalization) — NOT STARTED
 - [ ] Strip VibeMus's multi-turn chat loop into a single function:
@@ -93,3 +87,32 @@ which we assume to predict correctly per project scope).
 - Step 0 fully complete. Next: build curated dataset (Step 1), then swap LLM
   backend to Claude API (Step 2).
 
+
+### 2026-07-03
+- Pod was terminated/replaced (container ID changed from 9aff7bae037b to f3cab1d89a02).
+- All files at / were wiped. GitHub only had scaffold files (.gitignore, CLAUDE.md, PROGRESS.md).
+- Recovered by re-cloning repo into /workspace (persistent volume) and redoing environment setup.
+- Going forward: all work in /workspace/genplaylist-wp4-eval to ensure persistence.
+
+### 2026-07-03
+- Pod was terminated/replaced (container ID changed from 9aff7bae037b to f3cab1d89a02).
+- All files at / were wiped. GitHub only had scaffold files (.gitignore, CLAUDE.md, PROGRESS.md).
+- Recovered by re-cloning repo into /workspace (persistent volume) and redoing environment setup.
+- Going forward: all work in /workspace/genplaylist-wp4-eval to ensure persistence.
+
+### 2026-07-03 — Playlist candidate scan (Step 1, read-only report)
+- Parsed data/raw/data/playlists/mpd_subset/playlists.txt (6,585 playlists;
+  format = `playlist_id, song_id, song_id, ...`).
+- Cross-referenced against 1,147 mp3 files in data/raw/data/audio/spotify/.
+- Found 388 playlists with >=10 audio-available songs; reported top 10 by audio count
+  (best candidates: 6334/6388/3657 with 18 audio songs each).
+- GOTCHA: both audio/ and lyrics/ dirs contain macOS AppleDouble sidecar files
+  (`._<id>.mp3` / `._<id>.txt`) — inflates naive `ls` counts and must be filtered
+  (skip names starting with `._`). Real counts: 1,147 audio, 1,690 lyrics.
+- BLOCKER for lyric verbalization: audio song-IDs and lyric song-IDs are DISJOINT.
+  Overlap = 0 across all 1,147 audio IDs (ranges overlap: audio 1-254002,
+  lyrics 15-254042, but no common ID). => none of the audio-available playlist
+  songs have matching lyrics. Lyric-based pipeline path can't use these audio songs
+  as-is; need to source lyrics for the audio IDs (or audio for the lyric IDs), or
+  confirm this is expected. Raised for decision before picking the final 5 playlists.
+- No files modified (data untouched); report only.
