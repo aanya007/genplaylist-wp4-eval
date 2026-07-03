@@ -1,4 +1,4 @@
-cat > /workspace/genplaylist-wp4-eval/PROGRESS.md << 'PROGRESSEOF'
+
 # Progress Tracker — GenPlaylist WP-D Part 4 (Eval Matrix + Verbalization Pipeline)
 
 ## Goal
