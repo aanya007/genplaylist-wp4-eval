@@ -47,13 +47,15 @@ which we assume to predict correctly per project scope).
 - Tested without DASHSCOPE_API_KEY (manual tag/lyric entry) since LLM backend
   swap to Claude API is the next step, not yet done.
 
-## Status: Step 1 — Curated Dataset —
-- [x ] Locate/extract real audio + metadata files (audio_part_aa..ak, genplaylist_data_meta)
-- [x ] Inspect metadata schema (playlist IDs, song IDs, audio file mapping)
-- [x ] Pick 5 real playlists
-- [x ] Split each into seed set (first 5 songs) / ground truth (next 5 songs)
-- [x ] Manually curate 6-10 creative cues per playlist, with weighted variants (5 per playlist)
-- [x ] Assemble 25 curated input JSON files in data/curated/
+## Status: Step 1 — Curated Dataset — COMPLETE (placeholder cues)
+- [x] Locate/extract real audio + metadata files (audio_part_aa..ak, genplaylist_data_meta)
+- [x] Inspect metadata schema (playlist IDs, song IDs, audio file mapping)
+- [x] Pick 5 real playlists (6334, 3657, 8280, 3122, 13867)
+- [x] Split each into seed set (first 5 audio-available songs) / ground truth (next 5 audio-available)
+- [x] Curate creative cues per playlist, with weighted variants (5 per playlist)
+      — NOTE: currently GENERIC PLACEHOLDER cues (energetic/melancholic/upbeat/dreamy/intense),
+      not hand-curated per-playlist cues. Revisit once lyric matching is resolved.
+- [x] Assemble 25 curated input JSON files in data/curated/
 
 ## Status: Step 3 — Pipeline Simplification (single-shot verbalization) — NOT STARTED
 - [ ] Strip VibeMus's multi-turn chat loop into a single function:
@@ -116,3 +118,16 @@ which we assume to predict correctly per project scope).
   as-is; need to source lyrics for the audio IDs (or audio for the lyric IDs), or
   confirm this is expected. Raised for decision before picking the final 5 playlists.
 - No files modified (data untouched); report only.
+
+### 2026-07-03 — Built 25 curated input JSONs (Step 1 complete)
+- Selected 5 playlists: 6334, 3657, 8280, 3122, 13867.
+- Per playlist: seed_songs = first 5 audio-available songs, ground_truth_songs = next 5
+  audio-available songs (skipping playlist songs with no mp3). All 5 had >=10 audio songs.
+- Wrote 25 files data/curated/p{playlist_id}_v{1-5}.json following schema
+  {playlist_id, variant_id, seed_songs:[{id,audio_path}], ground_truth_songs:[{id,audio_path}],
+  creative_cues:[{cue,weight}]}. audio_path = data/raw/data/audio/spotify/{id}.mp3.
+- Validated: 25/25 JSON parse OK, all 250 referenced mp3 paths exist on disk.
+- Creative cues are PLACEHOLDERS: 5 generic cues (energetic/melancholic/upbeat/dreamy/intense),
+  same set in every file, with a different weight profile per variant (each variant emphasizes
+  one cue at weight 1.0). To be replaced with real per-playlist creative cues later; lyrics
+  still unmatched (see disjoint audio/lyric ID blocker above).

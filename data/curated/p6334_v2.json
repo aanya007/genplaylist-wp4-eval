@@ -1,0 +1,70 @@
+{
+  "playlist_id": 6334,
+  "variant_id": 2,
+  "seed_songs": [
+    {
+      "id": 8751,
+      "audio_path": "data/raw/data/audio/spotify/8751.mp3"
+    },
+    {
+      "id": 11195,
+      "audio_path": "data/raw/data/audio/spotify/11195.mp3"
+    },
+    {
+      "id": 12304,
+      "audio_path": "data/raw/data/audio/spotify/12304.mp3"
+    },
+    {
+      "id": 21255,
+      "audio_path": "data/raw/data/audio/spotify/21255.mp3"
+    },
+    {
+      "id": 48545,
+      "audio_path": "data/raw/data/audio/spotify/48545.mp3"
+    }
+  ],
+  "ground_truth_songs": [
+    {
+      "id": 79149,
+      "audio_path": "data/raw/data/audio/spotify/79149.mp3"
+    },
+    {
+      "id": 88362,
+      "audio_path": "data/raw/data/audio/spotify/88362.mp3"
+    },
+    {
+      "id": 94558,
+      "audio_path": "data/raw/data/audio/spotify/94558.mp3"
+    },
+    {
+      "id": 110564,
+      "audio_path": "data/raw/data/audio/spotify/110564.mp3"
+    },
+    {
+      "id": 123208,
+      "audio_path": "data/raw/data/audio/spotify/123208.mp3"
+    }
+  ],
+  "creative_cues": [
+    {
+      "cue": "energetic",
+      "weight": 0.2
+    },
+    {
+      "cue": "melancholic",
+      "weight": 1.0
+    },
+    {
+      "cue": "upbeat",
+      "weight": 0.3
+    },
+    {
+      "cue": "dreamy",
+      "weight": 0.7
+    },
+    {
+      "cue": "intense",
+      "weight": 0.4
+    }
+  ]
+}
